@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+
+doc_string="""
+aws-tools - Utility script for managing AWS EC2 instances
+Usage: ./aws-tools [function_name] [instance_name] [additional_parameters]
+
+Functions:
+  get-instance        - Retrieves instance information by name
+  get-public-ip       - Retrieves the public IP address of the instance
+  get-private-ip      - Retrieves the private IP address of the instance
+  start-session       - Starts an SSM session with the instance
+  ec2-proxy-command   - Executes a proxy command for EC2 instance connection
+
+Example:
+  ./aws-tools aws-get-public-ip my-instance
+"""
+
+REGIONS=(
+    ${RESIONS:-
+        "ap-northeast-1"
+        "ap-northeast-2"
+        "ap-northeast-3"
+        "ap-southeast-1"
+        "us-east-1"
+        "us-east-2"
+        "us-west-2"
+        "eu-west-3"
+        "me-central-1"
+    }
+)
+
+function install() {
+    echo "==== AWS Tools Installation Start ===="
+
+    FILE_PATH=$(realpath "$0")
+    SYMLINK_PATH="$HOME/.local/bin/aws-tools"
+    
+    ln -sf "$FILE_PATH" "$SYMLINK_PATH"
+    echo "Symbolic link created at $SYMLINK_PATH"
+
+    local ssh_config="$HOME/.ssh/config"
+    local config_content="
+host ec2.* ec2-*
+    User ubuntu
+    ProxyCommand bash -c \"aws-tools ec2-proxy-command \$(echo %h | sed 's/^....//') %r %p\"
+    ForwardAgent yes
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking no
+"
+    
+    if ! grep -q "aws-tools aws-ec2-proxy-command" "$ssh_config"; then
+        echo "$config_content" >> "$ssh_config"
+        echo "SSH config registered in $ssh_config"
+    else
+        echo "SSH configuration already exists in $ssh_config"
+    fi
+
+    echo "==== AWS Tools Installation Complete ===="
+}
+
+function print_help() {
+    echo "$doc_string"
+}
+
+function get_instance_by_name() {
+    local name="$1"
+    
+    local RESULTS="[]"
+    local temp_files=()
+
+    for region in "${REGIONS[@]}"; do
+        temp_file=$(mktemp)
+        temp_files+=("$temp_file")
+
+        aws ec2 describe-instances \
+            --region "$region" \
+            --filter "Name=tag:Name,Values=$name" \
+            --query "Reservations[].Instances[]" \
+            --output json > "$temp_file" &
+    done
+
+    wait
+
+    for temp_file in "${temp_files[@]}"; do
+        RESULTS=$(jq -c --slurpfile new "$temp_file" '$new[0] + .' <<< "$RESULTS")
+        rm -f "$temp_file"
+    done
+
+    echo "$RESULTS"
+}
+
+function get-public-ip() {
+    local instance_name=$1
+    local instance=$(get_instance_by_name $instance_name)
+    public_ip_address=$(echo "$instance" | jq -r '.[].PublicIpAddress')
+    
+    echo $public_ip_address
+}
+
+function get-private-ip() {
+    local instance_name=$1
+    local instance=$(get_instance_by_name $instance_name)
+    private_ip_address=$(echo "$instance" | jq -r '.[].PrivateIpAddress')
+    
+    echo $private_ip_address
+}
+
+function ec2-instance-connect() {
+    
+    local instance_id=$1
+    local availability_zone=$2
+    local user=$3
+    local port=$4
+
+    echo "=== SECTION: Connection Details ===" >&2
+    echo "* user: $user" >&2
+    echo "* port: $port" >&2
+    echo "* availability_zone: $availability_zone" >&2
+    echo "* region: ${availability_zone%[a-z]}" >&2
+
+    aws ec2-instance-connect send-ssh-public-key \
+        --instance-id  $instance_id \
+        --region ${availability_zone%[a-z]} \
+        --availability-zone $availability_zone \
+        --instance-os-user $user \
+        --ssh-public-key file:///$HOME/.ssh/id_rsa.pub > /dev/null;
+}
+
+function ec2-proxy-command() {
+
+    local instance_name="$1"
+    local user="${2:-ubuntu}"
+    local port="${3:-22}"
+
+    local instance=$(get_instance_by_name "$instance_name")
+    
+    if [ ! -f $HOME/.ssh/id_rsa.pub ]; then
+        ssh-keygen -t rsa -b 4096 -f $HOME/.ssh/id_rsa -N "" -C "$(hostname)@no_reply.flitto.com"
+    fi
+
+    availability_zone=$(echo "$instance" | jq -r '.[].Placement.AvailabilityZone')
+    instance_id=$(echo "$instance" | jq -r '.[].InstanceId')
+
+    ec2-instance-connect ${instance_id} ${availability_zone} ${user} ${port}
+
+    aws ssm start-session --target $instance_id \
+        --document-name AWS-StartSSHSession \
+        --parameters "portNumber=$port" \
+        --region "${availability_zone%[a-z]}"
+}
+
+
+function start-session() {
+    local instance_name=$1
+    local user=${2:-ubuntu}
+    local port=${3:-22}
+
+    local instance=$(get_instance_by_name $instance_name)
+
+    if [ ! -f $HOME/.ssh/id_rsa.pub ]; then
+        ssh-keygen -t rsa -b 4096 -f $HOME/.ssh/id_rsa -N "" -C "$(hostname)@no_reply.flitto.com"
+    fi
+
+    availability_zone=$(echo "$instance" | jq -r '.[].Placement.AvailabilityZone')
+    instance_id=$(echo "$instance" | jq -r '.[].InstanceId')
+
+    ec2-instance-connect $instance_id $availability_zone $user $port
+
+    aws ssm start-session --target $instance_id \
+        --parameters "portNumber=$port" \
+        --region "${availability_zone%[a-z]}"
+}
+
+# =================================
+# ==== MAIN FUNCTION EXECUTION ====
+# =================================
+
+function_name=${1:-"--help"}
+instance_name=$2
+
+case $function_name in
+    get-instance)
+        get_instance_by_name "${@:2}"
+        ;;
+    get-public-ip)
+        get-public-ip "${@:2}"
+        ;;
+    get-private-ip)
+        get-private-ip "${@:2}"
+        ;;
+    start-session)
+        start-session "${@:2}"
+        ;;
+    ec2-proxy-command)       
+        ec2-proxy-command "${@:2}"
+        ;;
+    install )
+        install
+        ;;
+    help | --help | -h)    
+        print_help
+        ;;
+    *)
+        echo "Unknown function: $function_name"
+        print_help
+        exit 1
+        ;;
+esac
+
+exit 0

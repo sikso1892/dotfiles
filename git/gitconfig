@@ -205,3 +205,5 @@
 	# include external gitconfig file (requires git 1.7.10+)
 	# typically, user.name and user.email is configured.
 	path = ~/.gitconfig.secret
+[http]
+	postBuffer = 524288000

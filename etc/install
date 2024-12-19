@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Usage:
-# curl -fsSL https://dotfiles.wook.kr/etc/install | bash
+# curl -fsSL https://raw.githubusercontent.com/sikso1892/dotfiles/master/etc/install | bash
 
 cat <<EOF
-   @wookayin's              ███████╗██╗██╗     ███████╗███████╗
+   @sikso's                 ███████╗██╗██╗     ███████╗███████╗
    ██████╗  █████╗ ████████╗██╔════╝██║██║     ██╔════╝██╔════╝
    ██╔══██╗██╔══██╗╚══██╔══╝█████╗  ██║██║     █████╗  ███████╗
    ██║  ██║██║  ██║   ██║   ██╔══╝  ██║██║     ██╔══╝  ╚════██║
@@ -33,7 +33,7 @@ if _version_check "$(git --version | cut -d' ' -f3)" "2.8"; then
     GIT_FLAGS="-j8"
 fi
 
-GIT_REPO="https://github.com/wookayin/dotfiles.git"
+GIT_REPO="https://github.com/sikso1892/dotfiles.git"
 
 set -x
 set -e
