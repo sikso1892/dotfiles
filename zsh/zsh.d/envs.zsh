@@ -66,7 +66,21 @@ if (( $+commands[nvim] )) && [[ -z "$GIT_EDITOR" ]] ; then
   export GIT_EDITOR="nvim"
 fi
 
-#
+# AWS Tools - Target Regions Configuration
+# This variable defines the AWS regions to be searched when using aws-tools
+# You can modify this list based on your infrastructure requirements
+export AWS_REGIONS=(
+    "ap-northeast-1"  # Tokyo, Japan (Asia Pacific)
+    "ap-northeast-2"  # Seoul, South Korea (Asia Pacific)
+    "ap-northeast-3"  # Osaka, Japan (Asia Pacific)
+    "ap-southeast-1"  # Singapore (Asia Pacific)
+    "us-east-1"      # N. Virginia (US East)
+    "us-east-2"      # Ohio (US East)
+    "us-west-2"      # Oregon (US West)
+    "eu-west-3"      # Paris (Europe)
+    "me-central-1"   # UAE (Middle East)
+)
+
 # Path Configurations: Removed, DON'T PUT HERE.
 #
 # Note: Configuring $PATH should be done preferably in:

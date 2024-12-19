@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 
 doc_string="""
-aws-tools - Utility script for managing AWS EC2 instances
-Usage: ./aws-tools [function_name] [instance_name] [additional_parameters]
+awstools - Utility script for managing AWS EC2 instances
+Usage: ./awstools [function_name] [instance_name] [additional_parameters]
 
 Functions:
   get-instance        - Retrieves instance information by name
   get-public-ip       - Retrieves the public IP address of the instance
   get-private-ip      - Retrieves the private IP address of the instance
   start-session       - Starts an SSM session with the instance
-  ec2-proxy-command   - Executes a proxy command for EC2 instance connection
+  ssm-proxy-command   - Executes a proxy command for EC2 instance connection
 
 Example:
-  ./aws-tools aws-get-public-ip my-instance
+  ./awstools get-public-ip my-instance
 """
 
-REGIONS=(
-    ${RESIONS:-
+AWS_RESIONS=(
+    ${AWS_RESIONS:-
         "ap-northeast-1"
         "ap-northeast-2"
         "ap-northeast-3"
@@ -29,33 +29,72 @@ REGIONS=(
     }
 )
 
+function parse_options() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -s | --silent)
+                SILENT=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    echo "$@"
+}
+
+function log() {
+    if [ "${SILENT:-0}" != "1" ]; then
+        echo "$1" >&2
+    fi
+}
+
 function install() {
-    echo "==== AWS Tools Installation Start ===="
+    log "==== AWS Tools Installation Start ===="
 
     FILE_PATH=$(realpath "$0")
-    SYMLINK_PATH="$HOME/.local/bin/aws-tools"
+    SYMLINK_PATH="$HOME/.local/bin/awstools"
     
     ln -sf "$FILE_PATH" "$SYMLINK_PATH"
-    echo "Symbolic link created at $SYMLINK_PATH"
+    log "Symbolic link created at $SYMLINK_PATH"
 
     local ssh_config="$HOME/.ssh/config"
-    local config_content="
+    local config_content=$(cat << 'EOF'
+
+# ===== AWS SSM Session Manager SSH Configuration Start =====
+
+# AWS EC2 specific hosts
 host ec2.* ec2-*
-    User ubuntu
-    ProxyCommand bash -c \"aws-tools ec2-proxy-command \$(echo %h | sed 's/^....//') %r %p\"
-    ForwardAgent yes
-    UserKnownHostsFile /dev/null
-    StrictHostKeyChecking no
-"
-    
-    if ! grep -q "aws-tools aws-ec2-proxy-command" "$ssh_config"; then
-        echo "$config_content" >> "$ssh_config"
-        echo "SSH config registered in $ssh_config"
-    else
-        echo "SSH configuration already exists in $ssh_config"
+User ubuntu
+ProxyCommand bash -c "awstools ssm-proxy-command $(echo %h | sed 's/^....//') %r %p"
+ForwardAgent yes
+UserKnownHostsFile /dev/null
+StrictHostKeyChecking no
+
+# Default configuration (should be at the end)
+host *
+User ubuntu
+ProxyCommand bash -c "awstools ssm-proxy-command $(echo %h | sed 's/^....//') %r %p"
+ForwardAgent yes
+UserKnownHostsFile /dev/null
+StrictHostKeyChecking no
+
+# ===== AWS SSM Session Manager SSH Configuration End =====
+EOF
+)
+    if ! grep -q "AWS SSM Session Manager SSH Configuration" "$ssh_config"; then
+        [ -f "$ssh_config" ] && [ "$(tail -c1 "$ssh_config" | wc -l)" -eq 0 ] || echo "" >> "$ssh_config"
     fi
 
-    echo "==== AWS Tools Installation Complete ===="
+    if ! grep -q "$config_content" "$ssh_config"; then
+        echo "$config_content" >> "$ssh_config"
+        log "SSH config registered in $ssh_config"
+    else
+        log "SSH configuration already exists in $ssh_config"
+    fi
+
+    log "==== AWS Tools Installation Complete ===="
 }
 
 function print_help() {
@@ -68,7 +107,7 @@ function get_instance_by_name() {
     local RESULTS="[]"
     local temp_files=()
 
-    for region in "${REGIONS[@]}"; do
+    for region in "${AWS_RESIONS[@]}"; do
         temp_file=$(mktemp)
         temp_files+=("$temp_file")
 
@@ -112,11 +151,11 @@ function ec2-instance-connect() {
     local user=$3
     local port=$4
 
-    echo "=== SECTION: Connection Details ===" >&2
-    echo "* user: $user" >&2
-    echo "* port: $port" >&2
-    echo "* availability_zone: $availability_zone" >&2
-    echo "* region: ${availability_zone%[a-z]}" >&2
+    log "=== SECTION: Connection Details ==="
+    log "* user: $user"
+    log "* port: $port"
+    log "* availability_zone: $availability_zone"
+    log "* region: ${availability_zone%[a-z]}"
 
     aws ec2-instance-connect send-ssh-public-key \
         --instance-id  $instance_id \
@@ -126,7 +165,7 @@ function ec2-instance-connect() {
         --ssh-public-key file:///$HOME/.ssh/id_rsa.pub > /dev/null;
 }
 
-function ec2-proxy-command() {
+function ssm-proxy-command() {
 
     local instance_name="$1"
     local user="${2:-ubuntu}"
@@ -175,6 +214,9 @@ function start-session() {
 # ==== MAIN FUNCTION EXECUTION ====
 # =================================
 
+ARGS=$(parse_options "$@")
+set -- $ARGS
+
 function_name=${1:-"--help"}
 instance_name=$2
 
@@ -191,8 +233,8 @@ case $function_name in
     start-session)
         start-session "${@:2}"
         ;;
-    ec2-proxy-command)       
-        ec2-proxy-command "${@:2}"
+    ssm-proxy-command)       
+        ssm-proxy-command "${@:2}"
         ;;
     install )
         install

@@ -1,0 +1,54 @@
+{
+    "title": "Zotero",
+    "rules": [
+        {
+            "description": "Change Backward/Foward",
+            "manipulators": [
+                {
+                    "type": "basic",                    
+                    "conditions": [
+                        {
+                            "bundle_identifiers": [
+                                "^org\\.zotero\\.zotero"
+                            ],
+                            "type": "frontmost_application_if"
+                        }
+                    ],
+                    "from": {
+                        "pointing_button": "button4"
+                    },
+                    "to": [
+                        {
+                            "key_code": "open_bracket",
+                            "modifiers": [
+                                "left_command"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "basic",                    
+                    "conditions": [
+                        {
+                            "bundle_identifiers": [
+                                "^org\\.zotero\\.zotero"
+                            ],
+                            "type": "frontmost_application_if"
+                        }
+                    ],
+                    "from": {
+                        "pointing_button": "button5"
+                    },
+                    "to": [
+                        {
+                            "key_code": "close_bracket",
+                            "modifiers": [
+                                "left_command"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
