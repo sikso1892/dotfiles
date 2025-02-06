@@ -53,6 +53,14 @@ function log() {
 function install() {
     log "==== AWS Tools Installation Start ===="
 
+    if ! [ -d "$HOME/.local/bin" ]; then
+        mkdir -p "$HOME/.local/bin"
+    fi
+
+    if ! [ -d "$HOME/.ssh" ]; then
+        mkdir -p "$HOME/.ssh"
+    fi
+
     FILE_PATH=$(realpath "$0")
     SYMLINK_PATH="$HOME/.local/bin/awstools"
     
@@ -61,24 +69,23 @@ function install() {
 
     local ssh_config="$HOME/.ssh/config"
     local config_content=$(cat << 'EOF'
-
 # ===== AWS SSM Session Manager SSH Configuration Start =====
 
 # AWS EC2 specific hosts
-host ec2.* ec2-*
-User ubuntu
-ProxyCommand bash -c "awstools ssm-proxy-command $(echo %h | sed 's/^....//') %r %p"
-ForwardAgent yes
-UserKnownHostsFile /dev/null
-StrictHostKeyChecking no
+Host ec2.* ec2-*
+    User ubuntu
+    ProxyCommand bash -c "awstools ssm-proxy-command $(echo %h | sed 's/^....//') %r %p"
+    ForwardAgent yes
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking no
 
 # Default configuration (should be at the end)
-host *
-User ubuntu
-ProxyCommand bash -c "awstools ssm-proxy-command $(echo %h | sed 's/^....//') %r %p"
-ForwardAgent yes
-UserKnownHostsFile /dev/null
-StrictHostKeyChecking no
+Host *
+    User ubuntu
+    ProxyCommand bash -c "awstools ssm-proxy-command %h %r %p"
+    ForwardAgent yes
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking no
 
 # ===== AWS SSM Session Manager SSH Configuration End =====
 EOF
@@ -87,11 +94,25 @@ EOF
         [ -f "$ssh_config" ] && [ "$(tail -c1 "$ssh_config" | wc -l)" -eq 0 ] || echo "" >> "$ssh_config"
     fi
 
-    if ! grep -q "$config_content" "$ssh_config"; then
+if grep -q "# ===== AWS SSM Session Manager SSH Configuration Start =====" "$ssh_config"; then
+    sed -i '/# ===== AWS SSM Session Manager SSH Configuration Start =====/,/# ===== AWS SSM Session Manager SSH Configuration End =====/c\
+'"$new_config_content" "$ssh_config"
+    log "SSH config block replaced in $ssh_config"
+else
+    echo "$new_config_content" >> "$ssh_config"
+    log "SSH config block added in $ssh_config"
+fi
+
+    if [ ! -f "$ssh_config" ]; then
+        echo "$config_content" > "$ssh_config"
+        log "SSH config created and registered in $ssh_config"
+    elif grep -q "# ===== AWS SSM Session Manager SSH Configuration Start =====" "$ssh_config"; then
+        sed -i '/# ===== AWS SSM Session Manager SSH Configuration Start =====/,/# ===== AWS SSM Session Manager SSH Configuration End =====/c\
+'"$config_content" "$ssh_config"
+        log "SSH config block replaced in $ssh_config"
+    else
         echo "$config_content" >> "$ssh_config"
         log "SSH config registered in $ssh_config"
-    else
-        log "SSH configuration already exists in $ssh_config"
     fi
 
     log "==== AWS Tools Installation Complete ===="
